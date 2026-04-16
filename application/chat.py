@@ -54,6 +54,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("chat")
 
+os.environ["BYPASS_TOOL_CONSENT"] = "true"
+
 workingDir = os.path.dirname(os.path.abspath(__file__))
 config_path = os.path.join(workingDir, "config.json")
 
@@ -293,7 +295,7 @@ def isKorean(text):
     
 def get_chat(extended_thinking):
     if model_type == 'claude':
-        maxOutputTokens = get_max_output_tokens()
+        maxOutputTokens = get_max_output_tokens(model_id)
     else:
         maxOutputTokens = 5120
     
@@ -728,7 +730,7 @@ def general_conversation(query):
     
     # Set model parameters
     if model_type == 'claude':
-        maxOutputTokens = get_max_output_tokens()
+        maxOutputTokens = get_max_output_tokens(model_id)
         STOP_SEQUENCE = "\n\nHuman:"
     else:
         maxOutputTokens = 5120
@@ -975,7 +977,7 @@ def run_rag_with_knowledge_base(query, st):
     
     # Set model parameters
     if model_type == 'claude':
-        maxOutputTokens = get_max_output_tokens()
+        maxOutputTokens = get_max_output_tokens(model_id)
         STOP_SEQUENCE = "\n\nHuman:"
     else:
         maxOutputTokens = 5120
