@@ -659,23 +659,6 @@ def create_secrets() -> Dict[str, str]:
                 "project_name": project_name,
                 "tavily_api_key": ""
             }
-        },
-        "notion": {
-            "name": f"notionapikey-{project_name}",
-            "description": "secret for notion api key",
-            "secret_value": {
-                "project_name": project_name,
-                "notion_api_key": ""
-            }
-        },
-        "slack": {
-            "name": f"slackapikey-{project_name}",
-            "description": "secret for slack api key",
-            "secret_value": {
-                "project_name": project_name,
-                "slack_team_id": "",
-                "slack_bot_token": ""
-            }
         }
     }
     
@@ -694,16 +677,6 @@ def create_secrets() -> Dict[str, str]:
                     logger.info(f"Enter credential of {secret_config['name']} (Tavily API Key):")
                     api_key = input(f"Creating {secret_config['name']} - Tavily API Key: ").strip()
                     secret_config["secret_value"]["tavily_api_key"] = api_key
-                elif key == "notion":
-                    logger.info(f"Enter credential of {secret_config['name']} (Notion API Key):")
-                    api_key = input(f"Creating {secret_config['name']} - Notion API Key: ").strip()
-                    secret_config["secret_value"]["notion_api_key"] = api_key
-                elif key == "slack":
-                    logger.info(f"Enter credential of {secret_config['name']} (Slack Team ID and Bot Token):")
-                    team_id = input(f"Creating {secret_config['name']} - Slack Team ID: ").strip()
-                    bot_token = input(f"Creating {secret_config['name']} - Slack Bot Token: ").strip()
-                    secret_config["secret_value"]["slack_team_id"] = team_id
-                    secret_config["secret_value"]["slack_bot_token"] = bot_token
                 
                 # Create the secret
                 try:

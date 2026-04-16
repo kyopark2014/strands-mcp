@@ -77,13 +77,7 @@ with st.sidebar:
         "web_fetch",
         "drawio",
         "text_extraction",
-        "slack",
-        "notion",
-        "outlook",
-        "gog",
         "korea_weather",
-        "AWS Sentral (Employee)",
-        "AWS Outlook (Employee)",
         "사용자 설정"
     ]
 
