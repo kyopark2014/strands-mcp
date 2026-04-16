@@ -15,7 +15,7 @@ from strands_tools import current_time, file_read, file_write
 from strands.agent.conversation_manager import SlidingWindowConversationManager
 from strands.tools.mcp import MCPClient
 from mcp import stdio_client, StdioServerParameters
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
 from botocore.config import Config
 from urllib import parse
 from strands import Agent, tool
@@ -579,7 +579,7 @@ class MCPClientManager:
             try:
                 if "transport" in config and config["transport"] == "streamable_http":
                     try:
-                        self.clients[name] = MCPClient(lambda: streamablehttp_client(
+                        self.clients[name] = MCPClient(lambda: streamable_http_client(
                             url=config["url"], 
                             headers=config["headers"]
                         ))
@@ -892,9 +892,9 @@ selected_strands_tools = []
 selected_mcp_servers = []
 active_plugin = None
 
-async def run_strands_agent(query: str, strands_tools: list[str], mcp_servers: list[str], plugin_name: Optional[str], containers: dict):
+async def run_strands_agent(query: str, strands_tools: list[str], mcp_servers: list[str], plugin_name: Optional[str], notification_queue):
     """Run the strands agent with streaming and tool notifications."""
-    queue = containers['queue']
+    queue = notification_queue
     queue.reset()
 
     image_url = []
@@ -999,7 +999,7 @@ async def run_strands_agent(query: str, strands_tools: list[str], mcp_servers: l
                 ref += f"{i+1}. [{reference['title']}]({reference['url']}), {content}...\n"
             final_result += ref
 
-        if containers is not None:
+        if notification_queue is not None:
             queue.result(final_result)
 
     return final_result, image_url

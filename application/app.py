@@ -348,12 +348,10 @@ if prompt := st.chat_input("메시지를 입력하세요."):
             response = chat.run_rag_with_knowledge_base(prompt, st)          
             st.markdown(response)                 
 
-            # retrieve and generate
-            # containers = {
-            #     "notification": [st.empty() for _ in range(1000)],
-            #     "message": st.empty()
-            # }
-            # response = chat.run_rag_using_retrieve_and_generate(prompt, containers)
+            # retrieve and generate (예시)
+            # with st.status("thinking...", expanded=True, state="running") as status:
+            #     notification_queue = NotificationQueue(container=status)
+            #     response = chat.run_rag_using_retrieve_and_generate(prompt, notification_queue)
                         
             logger.info(f"response: {response}")
             chat.save_chat_history(prompt, response)
@@ -374,31 +372,21 @@ if prompt := st.chat_input("메시지를 입력하세요."):
 
         elif mode == 'Agent':
             with st.status("thinking...", expanded=True, state="running") as status:
-                containers = {
-                    "tools": st.empty(),
-                    "status": st.empty(),
-                    "queue": NotificationQueue(container=status),
-                    "key": st.empty()
-                }
+                notification_queue = NotificationQueue(container=status)
 
                 response, image_urls = asyncio.run(strands_agent.run_strands_agent(
                     query=prompt, 
                     strands_tools=selected_strands_tools, 
                     mcp_servers=selected_mcp_servers, 
                     plugin_name="base",
-                    containers=containers))
+                    notification_queue=notification_queue))
 
         else:
             for plugin in plugin_list:
                 if mode == plugin["name"]:
                     with st.status("thinking...", expanded=True, state="running") as status:
-                        containers = {
-                            "tools": st.empty(),
-                            "status": st.empty(),
-                            "queue": NotificationQueue(container=status),
-                            "key": st.empty()
-                        }
-                    response, image_urls = asyncio.run(plugin_agent.run_plugin_agent(prompt, selected_strands_tools, selected_mcp_servers, plugin["name"], containers))
+                        notification_queue = NotificationQueue(container=status)
+                        response, image_urls = asyncio.run(plugin_agent.run_plugin_agent(prompt, selected_strands_tools, selected_mcp_servers, plugin["name"], notification_queue))
 
         if chat.debug_mode == 'Disable':
            st.markdown(response)
