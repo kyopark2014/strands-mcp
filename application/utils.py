@@ -133,33 +133,34 @@ except Exception as e:
     logger.info(f"Slack credential is required: {e}")
     pass
 
-# api key to use Tavily Search (Secrets Manager or env TAVILY_API_KEY)
-tavily_key = tavily_api_wrapper = ""
+# api key for Tavily: Secrets Manager → config.json TAVILY_API_KEY → env TAVILY_API_KEY
+# mcp_config passes utils.tavily_key into the tavily-mcp subprocess env (not the whole os.environ).
+tavily_key = ""
+tavily_api_wrapper = ""
 try:
     get_tavily_api_secret = secretsmanager.get_secret_value(
         SecretId=f"tavilyapikey-{projectName}"
     )
     secret = json.loads(get_tavily_api_secret["SecretString"])
-
-    if "tavily_api_key" in secret:
-        tavily_key = secret["tavily_api_key"]
-
-        if tavily_key:
-            tavily_api_wrapper = TavilySearchAPIWrapper(tavily_api_key=tavily_key)
-            os.environ["TAVILY_API_KEY"] = tavily_key
-        else:
-            logger.info("tavily_api_key in secret is empty.")
+    raw = (secret.get("tavily_api_key") or "").strip()
+    if raw:
+        tavily_key = raw
 except Exception as e:
     logger.warning(
-        "Tavily AWS secret unavailable (%s). Set TAVILY_API_KEY env or create secret tavilyapikey-%s.",
+        "Tavily AWS secret unavailable (%s). Using config/env TAVILY_API_KEY if set (secret id: tavilyapikey-%s).",
         e,
         projectName,
     )
 
-if not tavily_key and os.environ.get("TAVILY_API_KEY"):
-    tavily_key = os.environ["TAVILY_API_KEY"].strip()
-    if tavily_key:
-        tavily_api_wrapper = TavilySearchAPIWrapper(tavily_api_key=tavily_key)
+if not tavily_key:
+    tavily_key = (
+        (config.get("TAVILY_API_KEY") or os.environ.get("TAVILY_API_KEY") or "")
+        .strip()
+    )
+
+if tavily_key:
+    os.environ["TAVILY_API_KEY"] = tavily_key
+    tavily_api_wrapper = TavilySearchAPIWrapper(tavily_api_key=tavily_key)
 
 # api key to use notion
 notion_key = ""

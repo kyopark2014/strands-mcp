@@ -74,7 +74,9 @@ def load_config(mcp_type):
                     "command": "npx",
                     "args": ["-y", "tavily-mcp@0.1.4"],
                     "env": {
-                        "TAVILY_API_KEY": utils.tavily_key
+                        "TAVILY_API_KEY": (
+                            utils.tavily_key or os.environ.get("TAVILY_API_KEY", "")
+                        ).strip()
                     },
                 }
             }

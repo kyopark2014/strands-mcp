@@ -16,6 +16,7 @@ from strands.agent.conversation_manager import SlidingWindowConversationManager
 from strands.tools.mcp import MCPClient
 from mcp import stdio_client, StdioServerParameters
 from mcp.client.streamable_http import streamable_http_client
+from mcp.shared._httpx_utils import create_mcp_http_client
 from botocore.config import Config
 from urllib import parse
 from strands import Agent, tool
@@ -38,8 +39,6 @@ memory_id = actor_id = session_id = namespace = None
 
 s3_prefix = "docs"
 capture_prefix = "captures"
-
-aws_region = utils.bedrock_region
 
 config = utils.load_config()
 s3_bucket = config.get("s3_bucket")
@@ -464,51 +463,53 @@ def get_builtin_tools() -> list:
 # Strands Agent 
 #########################################################
 def get_model():
-    if chat.model_type == 'nova':
-        STOP_SEQUENCE = '"\n\n<thinking>", "\n<thinking>", " <thinking>"'
-    elif chat.model_type == 'claude':
-        STOP_SEQUENCE = "\n\nHuman:" 
-    elif chat.model_type == 'openai':
-        STOP_SEQUENCE = "" 
+    profile = chat.models[0]
+    bedrock_region = profile["bedrock_region"]
+    model_id = profile["model_id"]
+    model_type = profile["model_type"]
 
-    if chat.model_type == 'claude':
-        maxOutputTokens = chat.get_max_output_tokens(chat.model_id)
+    if model_type == "nova":
+        STOP_SEQUENCE = '"\n\n<thinking>", "\n<thinking>", " <thinking>"'
+    elif model_type == "claude":
+        STOP_SEQUENCE = "\n\nHuman:"
+    elif model_type == "openai":
+        STOP_SEQUENCE = ""
+
+    if model_type == "claude":
+        maxOutputTokens = chat.get_max_output_tokens(model_id)
     else:
         maxOutputTokens = 5120
 
-    maxReasoningOutputTokens=64000
-    thinking_budget = min(maxOutputTokens, maxReasoningOutputTokens-1000)
+    maxReasoningOutputTokens = 64000
+    thinking_budget = min(maxOutputTokens, maxReasoningOutputTokens - 1000)
 
-    # AWS 자격 증명 설정
-    aws_access_key = os.environ.get('AWS_ACCESS_KEY_ID')
-    aws_secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
-    aws_session_token = os.environ.get('AWS_SESSION_TOKEN')
+    aws_access_key = os.environ.get("AWS_ACCESS_KEY_ID")
+    aws_secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
+    aws_session_token = os.environ.get("AWS_SESSION_TOKEN")
 
-    # Bedrock 클라이언트 설정
     bedrock_config = Config(
-        read_timeout=900,
-        connect_timeout=900,
-        retries=dict(max_attempts=3, mode="adaptive"),
+        retries={"max_attempts": 30},
+        read_timeout=300,
     )
 
     if aws_access_key and aws_secret_key:
         boto_session = boto3.Session(
-            region_name=aws_region,
+            region_name=bedrock_region,
             aws_access_key_id=aws_access_key,
             aws_secret_access_key=aws_secret_key,
             aws_session_token=aws_session_token,
         )
     else:
-        boto_session = boto3.Session(region_name=aws_region)
+        boto_session = boto3.Session(region_name=bedrock_region)
 
-    if chat.reasoning_mode=='Enable' and chat.model_type != 'openai':
+    if chat.reasoning_mode == "Enable" and model_type != "openai":
         model = BedrockModel(
             boto_session=boto_session,
             boto_client_config=bedrock_config,
-            model_id=chat.model_id,
+            model_id=model_id,
             max_tokens=64000,
-            stop_sequences = [STOP_SEQUENCE],
-            temperature = 1,
+            stop_sequences=[STOP_SEQUENCE],
+            temperature=1,
             additional_request_fields={
                 "thinking": {
                     "type": "enabled",
@@ -516,31 +517,51 @@ def get_model():
                 }
             },
         )
-    elif chat.reasoning_mode=='Disable' and chat.model_type != 'openai':
+    elif chat.reasoning_mode == "Disable" and model_type != "openai":
         model = BedrockModel(
             boto_session=boto_session,
             boto_client_config=bedrock_config,
-            model_id=chat.model_id,
+            model_id=model_id,
             max_tokens=maxOutputTokens,
-            stop_sequences = [STOP_SEQUENCE],
-            temperature = 0.1,
+            stop_sequences=[STOP_SEQUENCE],
+            temperature=0.1,
             additional_request_fields={
                 "thinking": {
                     "type": "disabled"
                 }
-            }
+            },
         )
-    elif chat.model_type == 'openai':
+    elif model_type == "openai":
         model = BedrockModel(
-            model=chat.model_id,
-            region=aws_region,
-            streaming=True
+            model=model_id,
+            region=bedrock_region,
+            streaming=True,
         )
+
     return model
 
 conversation_manager = SlidingWindowConversationManager(
     window_size=10,  
 )
+
+
+@contextlib.asynccontextmanager
+async def _streamable_http_with_headers(
+    url: str,
+    headers: dict[str, str],
+    *,
+    terminate_on_close: bool = True,
+):
+    """Custom headers for Streamable HTTP MCP (replaces deprecated streamablehttp_client)."""
+    client = create_mcp_http_client(headers=headers)
+    async with client:
+        async with streamable_http_client(
+            url,
+            http_client=client,
+            terminate_on_close=terminate_on_close,
+        ) as streams:
+            yield streams
+
 
 class MCPClientManager:
     def __init__(self):
@@ -579,10 +600,20 @@ class MCPClientManager:
             try:
                 if "transport" in config and config["transport"] == "streamable_http":
                     try:
-                        self.clients[name] = MCPClient(lambda: streamable_http_client(
-                            url=config["url"], 
-                            headers=config["headers"]
-                        ))
+                        url = config["url"]
+                        hdrs = config.get("headers") or {}
+                        if hdrs:
+                            # Build httpx inside the MCP background thread's event loop.
+                            # Pre-creating AsyncClient on the main thread binds it to the wrong loop.
+                            self.clients[name] = MCPClient(
+                                lambda u=url, h=dict(hdrs): _streamable_http_with_headers(
+                                    u, h, terminate_on_close=True
+                                )
+                            )
+                        else:
+                            self.clients[name] = MCPClient(
+                                lambda u=url: streamable_http_client(u)
+                            )
                     except Exception as http_error:
                         logger.error(f"Failed to create streamable HTTP client for {name}: {http_error}")
                         if "403" in str(http_error) or "Forbidden" in str(http_error) or "MCPClientInitializationError" in str(http_error) or "client initialization failed" in str(http_error):
@@ -631,31 +662,51 @@ class MCPClientManager:
         if name in self.client_configs:
             del self.client_configs[name]
     
+    def _all_mcp_sessions_active(self, client_names: List[str]) -> bool:
+        """Return True if every named Strands MCPClient has an active background session."""
+        for name in client_names:
+            c = self.clients.get(name)
+            if c is None or not c._is_session_active():
+                return False
+        return True
+
     def start_agent_clients(self, client_names: List[str]) -> bool:
-        """Start MCP clients persistently. Only restarts if client list changed."""
-        if self._persistent_stack and set(self._persistent_client_names) == set(client_names):
+        """Start MCP clients persistently. Restarts when the client set changes or any session is dead."""
+        if (
+            self._persistent_stack
+            and set(self._persistent_client_names) == set(client_names)
+            and client_names
+            and self._all_mcp_sessions_active(client_names)
+        ):
             logger.info(f"Persistent MCP clients already running: {client_names}")
             return False
-        
+
+        if self._persistent_stack and set(self._persistent_client_names) == set(client_names):
+            logger.warning(
+                "MCP client names unchanged but session(s) inactive; restarting persistent stack."
+            )
+
         self.stop_agent_clients()
-        
+
+        if not client_names:
+            return False
+
         logger.info(f"Starting persistent MCP clients: {client_names}")
         self._persistent_stack = contextlib.ExitStack()
-        
-        for name in client_names:
-            client = self.get_client(name)
-            if client:
-                try:
-                    if hasattr(client, '_session') and client._session is not None:
-                        try:
-                            client.stop()
-                        except Exception:
-                            pass
-                    self._persistent_stack.enter_context(client)
-                    logger.info(f"client started: {name}")
-                except Exception as e:
-                    logger.error(f"Error starting client {name}: {e}")
-        
+
+        try:
+            for name in client_names:
+                client = self.get_client(name)
+                if not client:
+                    raise RuntimeError(
+                        f"MCP client not configured for {name!r}. Check init_mcp_clients and mcp_config."
+                    )
+                self._persistent_stack.enter_context(client)
+                logger.info(f"client started: {name}")
+        except Exception:
+            self.stop_agent_clients()
+            raise
+
         self._persistent_client_names = list(client_names)
         return True
     
@@ -674,9 +725,14 @@ class MCPClientManager:
     def get_active_clients(self, active_clients: List[str]):
         """Manage active clients context"""
         
-        # Reuse persistent clients if the same set is already running
-        if self._persistent_stack and set(self._persistent_client_names) == set(active_clients):
-            logger.info(f"Reusing MCP clients")
+        # Reuse persistent clients when the same set is running and all sessions are active.
+        if (
+            self._persistent_stack
+            and set(self._persistent_client_names) == set(active_clients)
+            and active_clients
+            and self._all_mcp_sessions_active(active_clients)
+        ):
+            logger.info("Reusing MCP clients")
             yield
             return
         
@@ -919,6 +975,8 @@ async def run_strands_agent(query: str, strands_tools: list[str], mcp_servers: l
         # Start or reuse persistent MCP clients
         mcp_manager.start_agent_clients(mcp_servers)
 
+    mcp_manager.start_agent_clients(mcp_servers)
+
     # run agent
     final_result = current = ""
     with mcp_manager.get_active_clients(mcp_servers) as _:
@@ -1000,7 +1058,7 @@ async def run_strands_agent(query: str, strands_tools: list[str], mcp_servers: l
             final_result += ref
 
         if notification_queue is not None:
-            queue.result(final_result)
+            queue.result(final_result if final_result else current)
 
     return final_result, image_url
 
