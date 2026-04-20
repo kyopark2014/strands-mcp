@@ -82,7 +82,7 @@ with st.sidebar:
     ]
 
     mcp_selections = {}
-    default_mcp_selections = ["korea_weather", "web_fetch", "tavily"]
+    default_mcp_selections = ["korea_weather", "web_fetch"]
 
     # Default: prevent strands_selections undefined when not in Agent mode
     default_strands_tool_selections = config.get("default_strands_tool_selections") or default_strands_tool_selections
@@ -345,11 +345,6 @@ if prompt := st.chat_input("메시지를 입력하세요."):
             response = chat.run_rag_with_knowledge_base(prompt, st)          
             st.markdown(response)                 
 
-            # retrieve and generate (예시)
-            # with st.status("thinking...", expanded=True, state="running") as status:
-            #     notification_queue = NotificationQueue(container=status)
-            #     response = chat.run_rag_using_retrieve_and_generate(prompt, notification_queue)
-                        
             logger.info(f"response: {response}")
             chat.save_chat_history(prompt, response)
 
@@ -375,15 +370,7 @@ if prompt := st.chat_input("메시지를 입력하세요."):
                     query=prompt, 
                     strands_tools=selected_strands_tools, 
                     mcp_servers=selected_mcp_servers, 
-                    plugin_name="base",
                     notification_queue=notification_queue))
-
-        else:
-            for plugin in plugin_list:
-                if mode == plugin["name"]:
-                    with st.status("thinking...", expanded=True, state="running") as status:
-                        notification_queue = NotificationQueue(container=status)
-                        response, image_urls = asyncio.run(plugin_agent.run_plugin_agent(prompt, selected_strands_tools, selected_mcp_servers, plugin["name"], notification_queue))
 
         if chat.debug_mode == 'Disable':
            st.markdown(response)
