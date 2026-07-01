@@ -2,6 +2,7 @@ import chat
 import os
 import contextlib
 import info
+import bedrock_data_retention
 import mcp_config
 import logging
 import sys
@@ -601,7 +602,15 @@ def get_model():
     else:
         boto_session = boto3.Session(region_name=bedrock_region)
 
-    if chat.reasoning_mode == "Enable" and model_type != "openai":
+    if "fable" in model_id.lower():
+        bedrock_data_retention.ensure_fable_data_retention(
+            model_id,
+            bedrock_region=bedrock_region,
+        )
+
+    adaptive_thinking = chat.uses_adaptive_thinking(model_id)
+
+    if chat.reasoning_mode == "Enable" and model_type != "openai" and not adaptive_thinking:
         model = BedrockModel(
             boto_session=boto_session,
             boto_client_config=bedrock_config,
@@ -616,7 +625,7 @@ def get_model():
                 }
             },
         )
-    elif chat.reasoning_mode == "Disable" and model_type != "openai":
+    elif chat.reasoning_mode == "Disable" and model_type != "openai" and not adaptive_thinking:
         model = BedrockModel(
             boto_session=boto_session,
             boto_client_config=bedrock_config,
@@ -629,6 +638,14 @@ def get_model():
                     "type": "disabled"
                 }
             },
+        )
+    elif model_type != "openai" and adaptive_thinking:
+        model = BedrockModel(
+            boto_session=boto_session,
+            boto_client_config=bedrock_config,
+            model_id=model_id,
+            max_tokens=maxOutputTokens,
+            stop_sequences=[STOP_SEQUENCE],
         )
     elif model_type == "openai":
         model = _build_mantle_openai_model(profile, boto_session, maxOutputTokens)
