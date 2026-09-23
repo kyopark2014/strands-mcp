@@ -165,6 +165,7 @@ with st.sidebar:
     modelName = st.selectbox(
         '🖊️ 사용 모델을 선택하세요',
         (
+            "Claude 5.5 Opus",
             "Claude 5.0 Sonnet",
             "Claude 5.0 Opus",
             "Claude 4.6 Sonnet",
@@ -178,6 +179,8 @@ with st.sidebar:
             "OpenAI GPT 5.4",
             "OpenAI GPT 5.5",
             "OpenAI GPT 6 Astra",
+            "OpenAI GPT 6 Sol",
+            "OpenAI GPT 6 Luna",
             "OpenAI GPT 5.6 Sol",
             "OpenAI GPT 5.6 Terra",
             "OpenAI GPT 5.6 Luna",
